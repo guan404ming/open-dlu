@@ -36,7 +36,8 @@ Local (CPU/GPU, single process):
 ```bash
 python -m src.train                                           # simplest cap recipe
 python -m src.train trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]
-python -m src.train -m train.seed=42,7,1337                   # Hydra multirun sweep
+python -m src.train -m trainer.args.seed=42,7,1337            # Hydra multirun sweep
+python -m src.eval                                            # eval a model standalone
 ```
 
 On Modal (GPU):
@@ -53,16 +54,18 @@ Hydra config groups under `configs/`:
 
 ```
 configs/
-  unlearn.yaml          # main entry: composes the groups below
+  unlearn.yaml          # train entry: model + data + trainer + eval
+  eval.yaml             # standalone eval entry: model + eval
   model/   *.yaml       # HF id + mask_id  (llada, dream)
-  data/    *.yaml       # forget / retain corpora
-  trainer/ *.yaml       # a method = the five components, composed in one file
-  train/   default.yaml # TrainConfig hyperparameters
+  data/    *.yaml       # forget + retain corpora (one file)
+  trainer/ *.yaml       # a method: the five components + training args
+  eval/    *.yaml       # an evaluator: its metrics
 ```
 
-A `trainer` config inlines the five components (`forget`, `retain`, `weighting`,
-`adapter`, `mask`). Swap a method with `trainer=<name>`; tweak one knob with
-`trainer.forget.cap=2`.
+A `trainer` inlines the five components (`forget`, `retain`, `weighting`,
+`adapter`, `mask`) and an `args` block (steps, lr, ...), so each method carries
+its own hyperparameters. Swap a method with `trainer=<name>`; tweak one knob with
+`trainer.forget.cap=2` or `trainer.args.lr=2e-5`.
 
 ## Extend
 

@@ -52,7 +52,7 @@ def train_remote(overrides: list):
 
 @app.local_entrypoint()
 def main(steps: int = 1, seed: int = 42, model: str = "llada", overrides: str = ""):
-    ov = [f"train.steps={steps}", f"train.seed={seed}", f"model={model}"]
+    ov = [f"trainer.args.steps={steps}", f"trainer.args.seed={seed}", f"model={model}"]
     if overrides:
         ov += overrides.split()
     print(f"[overrides] {ov}")

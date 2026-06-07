@@ -25,7 +25,7 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
     weighting = instantiate(t.weighting)
     adapter   = instantiate(t.adapter)
     mask      = instantiate(t.mask)
-    train_cfg = TrainConfig(**OmegaConf.to_container(cfg.train, resolve=True))
+    train_cfg = TrainConfig(**OmegaConf.to_container(t.args, resolve=True))
 
     print(f"[load] {cfg.model.model_id}")
     model, tok = load_model(cfg.model.model_id, device)

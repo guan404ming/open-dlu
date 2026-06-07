@@ -1,8 +1,8 @@
 """Local Hydra entrypoint.
 
     python -m src.train                       # simplest cap recipe
-    python -m src.train forget.cap=2 adapter.layers=[10,11,12]
-    python -m src.train -m train.seed=42,7,1337   # multirun sweep
+    python -m src.train trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]
+    python -m src.train -m trainer.args.seed=42,7,1337   # multirun sweep
 """
 import hydra
 

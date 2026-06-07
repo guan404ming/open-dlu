@@ -1,5 +1,5 @@
-# A trainer = a named method, composed inline from the five components.
-# Override a knob: `trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]`.
+# A trainer = a method (five components) + its training args.
+# Override a knob: `trainer.forget.cap=2 trainer.args.lr=2e-5`.
 forget:
   _target_: src.component.forget.capped.CappedForget
   cap: 1.0
@@ -13,3 +13,19 @@ adapter:
   layers: [5, 6, 7]
 mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
+
+args:
+  steps: 500
+  warmup_steps: 150
+  lr: 5e-5
+  alpha_retain: 1.0
+  batch_forget: 2
+  batch_retain: 2
+  seq_len: 512
+  grad_clip: 1.0
+  t_min: 0.1
+  t_max: 0.9
+  seed: 42
+  mask_id: ${model.mask_id}
+  use_8bit_optim: false
+  cosine_decay: false
