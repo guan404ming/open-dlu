@@ -1,4 +1,5 @@
 """Evaluator registry. `get_evaluators(cfg.eval)` -> {name: Evaluator}."""
+
 from src.evals.base import Evaluator
 
 _EVALUATORS = {"Evaluator": Evaluator}

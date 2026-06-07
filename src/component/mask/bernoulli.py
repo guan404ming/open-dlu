@@ -1,7 +1,9 @@
 """Independent per-token Bernoulli(t) mask."""
+
 import torch
 
 from src.component.mask.base import MaskSampler
+
 
 class BernoulliMask(MaskSampler):
     def __call__(self, input_ids, t, **_):

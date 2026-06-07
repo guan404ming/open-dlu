@@ -4,6 +4,7 @@ Method-agnostic: the loop never names a method. Each forget/retain component
 declares the extra signals it needs (a frozen reference, an unconditional pass,
 hidden states) via flags, and the loop supplies exactly those.
 """
+
 import math
 import os
 import random
@@ -16,8 +17,18 @@ from src.trainer.config import TrainConfig
 
 
 class UnlearnPipeline:
-    def __init__(self, model, frozen, forget_loss, retain_loss, weighting,
-                 adapter, mask_sampler, config: TrainConfig, device="cuda:0"):
+    def __init__(
+        self,
+        model,
+        frozen,
+        forget_loss,
+        retain_loss,
+        weighting,
+        adapter,
+        mask_sampler,
+        config: TrainConfig,
+        device="cuda:0",
+    ):
         self.model = model
         self.frozen = frozen
         self.forget_loss = forget_loss
@@ -38,10 +49,13 @@ class UnlearnPipeline:
         trainable = [p for p in model.parameters() if p.requires_grad]
         if config.use_8bit_optim:
             import bitsandbytes as bnb
+
             self.optim = bnb.optim.AdamW8bit(trainable, lr=config.lr)
         else:
             self.optim = torch.optim.AdamW(trainable, lr=config.lr)
-        print(f"[pipeline] trainable {sum(p.numel() for p in trainable) / 1e6:.1f}M params")
+        print(
+            f"[pipeline] trainable {sum(p.numel() for p in trainable) / 1e6:.1f}M params"
+        )
 
     # --- helpers ---
     def _lr_scale(self, step: int) -> float:
@@ -74,9 +88,13 @@ class UnlearnPipeline:
         for name, mod in model.named_modules():
             for i in layers:
                 if name.endswith(f"{prefix}{i}"):
-                    hooks.append(mod.register_forward_hook(
-                        lambda _m, _i, o, k=i:
-                        out.__setitem__(k, o[0] if isinstance(o, tuple) else o)))
+                    hooks.append(
+                        mod.register_forward_hook(
+                            lambda _m, _i, o, k=i: out.__setitem__(
+                                k, o[0] if isinstance(o, tuple) else o
+                            )
+                        )
+                    )
         return hooks
 
     # --- loss terms ---
@@ -113,7 +131,9 @@ class UnlearnPipeline:
         mh, fh, hooks = {}, {}, []
         if rl.needs_hidden_states:
             layers = getattr(rl, "hidden_layers", (6,))
-            hooks = self._hooks(self.model, layers, mh) + self._hooks(self.frozen, layers, fh)
+            hooks = self._hooks(self.model, layers, mh) + self._hooks(
+                self.frozen, layers, fh
+            )
         logits = self.model(x).logits
         ref = None
         if rl.needs_frozen_logits or rl.needs_hidden_states:
@@ -122,8 +142,14 @@ class UnlearnPipeline:
             ref = out.logits if rl.needs_frozen_logits else None
         for h in hooks:
             h.remove()
-        loss = rl(model_logits=logits, target=ids, mask=mask, frozen_logits=ref,
-                  model_hidden=mh or None, frozen_hidden=fh or None)
+        loss = rl(
+            model_logits=logits,
+            target=ids,
+            mask=mask,
+            frozen_logits=ref,
+            model_hidden=mh or None,
+            frozen_hidden=fh or None,
+        )
         return c.alpha_retain * w * loss
 
     def _step(self, fids, rids, step):
@@ -137,7 +163,8 @@ class UnlearnPipeline:
         self.optim.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
-            [p for p in self.model.parameters() if p.requires_grad], c.grad_clip)
+            [p for p in self.model.parameters() if p.requires_grad], c.grad_clip
+        )
         self.optim.step()
         return loss.item(), ce
 
@@ -146,8 +173,9 @@ class UnlearnPipeline:
         self.model.train()
         t0 = time.time()
         for step in range(c.steps):
-            loss, ce = self._step(get_forget().to(self.device),
-                                  get_retain().to(self.device), step)
+            loss, ce = self._step(
+                get_forget().to(self.device), get_retain().to(self.device), step
+            )
             if (step + 1) % log_every == 0:
                 print(f"[step {step + 1}/{c.steps}] ce={ce:.2f} loss={loss:.3f}")
         print(f"[train] done in {(time.time() - t0) / 60:.1f} min")

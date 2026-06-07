@@ -1,7 +1,9 @@
 """Layer-restricted adapter: freeze everything outside a chosen set of blocks."""
+
 import torch
 
 from src.component.adapter.base import Adapter
+
 
 class LayerRestricted(Adapter):
     def __init__(self, layers=(5, 6, 7), block_key: str = None):
@@ -29,5 +31,8 @@ class LayerRestricted(Adapter):
                 p.requires_grad = True
 
     def state_dict(self, model):
-        return {k: v.detach().cpu() for k, v in model.state_dict().items()
-                if self._in_scope(k)}
+        return {
+            k: v.detach().cpu()
+            for k, v in model.state_dict().items()
+            if self._in_scope(k)
+        }

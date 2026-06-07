@@ -1,6 +1,8 @@
 """Adapter interface: chooses which parameters of the model are trainable."""
+
 from abc import ABC, abstractmethod
 import torch
+
 
 class Adapter(ABC):
     @abstractmethod

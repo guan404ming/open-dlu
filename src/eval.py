@@ -1,8 +1,9 @@
 """Standalone evaluation entrypoint (mirrors src/train.py).
 
-    python -m src.eval                       # eval base llada on wmdp
-    python -m src.eval model=dream
+python -m src.eval                       # eval base llada on wmdp
+python -m src.eval model=dream
 """
+
 import hydra
 
 from src.evals import run_evaluators
@@ -13,8 +14,9 @@ from src.model import load_model
 def main(cfg):
     device = "cuda:0"
     model, tok = load_model(cfg.model.model_id, device, eval_mode=True)
-    scores = run_evaluators(cfg.eval, model=model, tokenizer=tok,
-                            mask_id=cfg.model.mask_id, device=device)
+    scores = run_evaluators(
+        cfg.eval, model=model, tokenizer=tok, mask_id=cfg.model.mask_id, device=device
+    )
     print(scores)
 
 

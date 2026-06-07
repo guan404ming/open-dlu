@@ -1,16 +1,17 @@
 """Modal runner: compose a recipe from configs/ and train on a GPU.
 
-    modal run src/run.py                       # 1-step smoke test (cap, llada)
-    modal run src/run.py --steps 500 --model dream
-    modal run src/run.py --overrides "trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]"
+modal run src/run.py                       # 1-step smoke test (cap, llada)
+modal run src/run.py --steps 500 --model dream
+modal run src/run.py --overrides "trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]"
 """
+
 import sys
 from pathlib import Path
 
 import modal
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))   # so `import src` resolves when run as a script
+sys.path.insert(0, str(ROOT))  # so `import src` resolves when run as a script
 
 image = (
     modal.Image.debian_slim(python_version="3.11")

@@ -1,6 +1,8 @@
 """Mask sampler interface."""
+
 from abc import ABC, abstractmethod
 import torch
+
 
 class MaskSampler(ABC):
     """Maps (input_ids, t) → boolean mask of the same shape.

@@ -1,7 +1,9 @@
 """Capped GradDiff: hard-clamped gradient ascent on per-token CE."""
+
 import torch
 
 from src.component.forget.base import ForgetLoss
+
 
 class CappedForget(ForgetLoss):
     r"""Implements

@@ -1,4 +1,5 @@
 """Multiple-choice metrics (WMDP, MMLU): per-choice answer-token likelihood."""
+
 import torch
 import torch.nn.functional as F
 from datasets import load_dataset
@@ -6,26 +7,77 @@ from datasets import load_dataset
 from src.evals.metrics.base import unlearning_metric
 
 MMLU_SUBJECTS = [
-    "abstract_algebra", "anatomy", "astronomy", "business_ethics", "clinical_knowledge",
-    "college_biology", "college_chemistry", "college_computer_science", "college_mathematics",
-    "college_medicine", "college_physics", "computer_security", "conceptual_physics",
-    "econometrics", "electrical_engineering", "elementary_mathematics", "formal_logic",
-    "global_facts", "high_school_biology", "high_school_chemistry", "high_school_computer_science",
-    "high_school_european_history", "high_school_geography", "high_school_government_and_politics",
-    "high_school_macroeconomics", "high_school_mathematics", "high_school_microeconomics",
-    "high_school_physics", "high_school_psychology", "high_school_statistics", "high_school_us_history",
-    "high_school_world_history", "human_aging", "human_sexuality", "international_law",
-    "jurisprudence", "logical_fallacies", "machine_learning", "management", "marketing",
-    "medical_genetics", "miscellaneous", "moral_disputes", "moral_scenarios", "nutrition",
-    "philosophy", "prehistory", "professional_accounting", "professional_law", "professional_medicine",
-    "professional_psychology", "public_relations", "security_studies", "sociology",
-    "us_foreign_policy", "virology", "world_religions",
+    "abstract_algebra",
+    "anatomy",
+    "astronomy",
+    "business_ethics",
+    "clinical_knowledge",
+    "college_biology",
+    "college_chemistry",
+    "college_computer_science",
+    "college_mathematics",
+    "college_medicine",
+    "college_physics",
+    "computer_security",
+    "conceptual_physics",
+    "econometrics",
+    "electrical_engineering",
+    "elementary_mathematics",
+    "formal_logic",
+    "global_facts",
+    "high_school_biology",
+    "high_school_chemistry",
+    "high_school_computer_science",
+    "high_school_european_history",
+    "high_school_geography",
+    "high_school_government_and_politics",
+    "high_school_macroeconomics",
+    "high_school_mathematics",
+    "high_school_microeconomics",
+    "high_school_physics",
+    "high_school_psychology",
+    "high_school_statistics",
+    "high_school_us_history",
+    "high_school_world_history",
+    "human_aging",
+    "human_sexuality",
+    "international_law",
+    "jurisprudence",
+    "logical_fallacies",
+    "machine_learning",
+    "management",
+    "marketing",
+    "medical_genetics",
+    "miscellaneous",
+    "moral_disputes",
+    "moral_scenarios",
+    "nutrition",
+    "philosophy",
+    "prehistory",
+    "professional_accounting",
+    "professional_law",
+    "professional_medicine",
+    "professional_psychology",
+    "public_relations",
+    "security_studies",
+    "sociology",
+    "us_foreign_policy",
+    "virology",
+    "world_religions",
 ]
 
 BIO_ADJACENT = {
-    "college_biology", "high_school_biology", "virology", "medical_genetics",
-    "human_aging", "human_sexuality", "college_medicine", "professional_medicine",
-    "clinical_knowledge", "anatomy", "nutrition",
+    "college_biology",
+    "high_school_biology",
+    "virology",
+    "medical_genetics",
+    "human_aging",
+    "human_sexuality",
+    "college_medicine",
+    "professional_medicine",
+    "clinical_knowledge",
+    "anatomy",
+    "nutrition",
 }
 
 
@@ -34,10 +86,15 @@ def mcq_acc(model, tok, examples, mask_id, device):
     ans_ids = {c: tok(f" {c}", add_special_tokens=False).input_ids[0] for c in "ABCD"}
     correct = 0
     for ex in examples:
-        prompt = ex["question"] + "\n" + "\n".join(
-            f"{c}. {ex['choices'][j]}" for j, c in enumerate("ABCD")
-        ) + "\nAnswer:"
-        pids = torch.tensor(tok(prompt, add_special_tokens=False).input_ids, dtype=torch.long)
+        prompt = (
+            ex["question"]
+            + "\n"
+            + "\n".join(f"{c}. {ex['choices'][j]}" for j, c in enumerate("ABCD"))
+            + "\nAnswer:"
+        )
+        pids = torch.tensor(
+            tok(prompt, add_special_tokens=False).input_ids, dtype=torch.long
+        )
         scores = []
         for c in "ABCD":
             seq = torch.cat([pids, torch.tensor([ans_ids[c]])])[None, :].to(device)
@@ -45,8 +102,11 @@ def mcq_acc(model, tok, examples, mask_id, device):
             masked = seq.clone()
             masked[:, plen:] = mask_id
             logits = model(masked).logits
-            scores.append(-F.cross_entropy(
-                logits[0, plen:], seq[0, plen:], reduction="sum").item())
+            scores.append(
+                -F.cross_entropy(
+                    logits[0, plen:], seq[0, plen:], reduction="sum"
+                ).item()
+            )
         correct += "ABCD"[int(torch.tensor(scores).argmax())] == "ABCD"[ex["answer"]]
     return correct / len(examples)
 
@@ -67,7 +127,9 @@ def mmlu(model, tokenizer, mask_id, device, per_subject=30, **kw):
             print(f"[warn] skip {subj}: {e}")
             continue
         n = min(per_subject, len(sub))
-        c = round(mcq_acc(model, tokenizer, list(sub.select(range(n))), mask_id, device) * n)
+        c = round(
+            mcq_acc(model, tokenizer, list(sub.select(range(n))), mask_id, device) * n
+        )
         tot_c += c
         tot_n += n
         if subj in BIO_ADJACENT:

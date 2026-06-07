@@ -1,6 +1,8 @@
 """RetainLoss abstract interface."""
+
 from abc import ABC, abstractmethod
 import torch
+
 
 class RetainLoss(ABC):
     """Maps the retain batch to a scalar retain loss.
@@ -10,7 +12,9 @@ class RetainLoss(ABC):
     """
 
     needs_frozen_logits: bool = False
-    needs_hidden_states: bool = False   # set True to receive model/frozen layer activations
+    needs_hidden_states: bool = (
+        False  # set True to receive model/frozen layer activations
+    )
 
     @abstractmethod
     def __call__(
@@ -22,5 +26,4 @@ class RetainLoss(ABC):
         frozen_logits: torch.Tensor | None = None,
         model_hidden: dict | None = None,
         frozen_hidden: dict | None = None,
-    ) -> torch.Tensor:
-        ...
+    ) -> torch.Tensor: ...

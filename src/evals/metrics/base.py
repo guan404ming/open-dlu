@@ -5,6 +5,7 @@
 
 The Evaluator looks metrics up by name via ``get_metric``.
 """
+
 from typing import Any, Callable
 
 _METRICS: dict = {}

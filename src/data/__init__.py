@@ -5,6 +5,7 @@ Add a new one by writing a class and a ``configs/data/*.yaml`` that points at it
 nothing else changes. ``HFTextCorpus`` covers any HF dataset with a text column
 (wmdp-bio, wikitext, ...); QA corpora like TOFU get their own class later.
 """
+
 import random
 
 import torch
@@ -20,7 +21,7 @@ def chunkify(texts, tokenizer, n_chunks, seq_len, min_len=50):
         if len(ids) >= n_chunks * seq_len:
             break
     n = min(n_chunks, len(ids) // seq_len)
-    return [ids[i * seq_len:(i + 1) * seq_len] for i in range(n)]
+    return [ids[i * seq_len : (i + 1) * seq_len] for i in range(n)]
 
 
 def batch_sampler(chunks, batch_size):
@@ -39,5 +40,10 @@ class HFTextCorpus:
 
     def load(self, tokenizer, n_chunks, seq_len):
         ds = load_dataset(self.path, self.name, split=self.split)
-        return chunkify((x.get(self.text_key, "") for x in ds),
-                        tokenizer, n_chunks, seq_len, self.min_len)
+        return chunkify(
+            (x.get(self.text_key, "") for x in ds),
+            tokenizer,
+            n_chunks,
+            seq_len,
+            self.min_len,
+        )

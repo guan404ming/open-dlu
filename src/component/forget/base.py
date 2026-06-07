@@ -1,6 +1,8 @@
 """ForgetLoss abstract interface."""
+
 from abc import ABC, abstractmethod
 import torch
+
 
 class ForgetLoss(ABC):
     """Maps per-token CE on the forget batch to a scalar forget loss.
@@ -19,5 +21,4 @@ class ForgetLoss(ABC):
         ce_model: torch.Tensor,
         ce_ref: torch.Tensor | None = None,
         **kwargs,
-    ) -> torch.Tensor:
-        ...
+    ) -> torch.Tensor: ...

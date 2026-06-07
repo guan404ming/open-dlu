@@ -1,8 +1,10 @@
 """CE retain: cross-entropy on masked retain positions (no frozen reference)."""
+
 import torch
 import torch.nn.functional as F
 
 from src.component.retain.base import RetainLoss
+
 
 class CERetain(RetainLoss):
     needs_frozen_logits = False
