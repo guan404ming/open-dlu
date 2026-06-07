@@ -41,5 +41,15 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
     t0 = time.time()
     pipe.train(batch_sampler(fc, train_cfg.batch_forget),
                batch_sampler(rc, train_cfg.batch_retain), log_every=1)
-    return {"train_min": (time.time() - t0) / 60,
-            "steps": train_cfg.steps, "model": cfg.model.name}
+    train_min = (time.time() - t0) / 60
+
+    scores = {}
+    if cfg.get("eval"):
+        from src.evals import run_evaluators
+        model.eval()
+        scores = run_evaluators(cfg.eval, model=model, tokenizer=tok,
+                                mask_id=train_cfg.mask_id, device=device)
+        print(f"[eval] {scores}")
+
+    return {"train_min": train_min, "steps": train_cfg.steps,
+            "model": cfg.model.name, "scores": scores}

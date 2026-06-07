@@ -5,4 +5,5 @@ defaults:
   - data: wmdp_bio
   - trainer: cap
   - train: default
+  - eval: wmdp
   - _self_

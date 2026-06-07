@@ -1,0 +1,9 @@
+# An evaluator runs a set of metrics. Keyed by evaluator name.
+wmdp:
+  handler: Evaluator
+  metrics:
+    wmdp_bio:
+      handler: wmdp_bio
+    mmlu:
+      handler: mmlu
+      per_subject: 30
