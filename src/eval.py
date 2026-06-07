@@ -5,6 +5,7 @@ python -m src.eval model=dream
 """
 
 import hydra
+from hydra.utils import instantiate
 
 from src.evals import run_evaluators
 from src.model import load_model
@@ -14,8 +15,10 @@ from src.model import load_model
 def main(cfg):
     device = "cuda:0"
     model, tok = load_model(cfg.model.model_id, device, eval_mode=True)
+    generator = instantiate(cfg.model.generator) if cfg.model.get("generator") else None
     scores = run_evaluators(
-        cfg.eval, model=model, tokenizer=tok, mask_id=cfg.model.mask_id, device=device
+        cfg.eval, model=model, tokenizer=tok, mask_id=cfg.model.mask_id,
+        device=device, generator=generator,
     )
     print(scores)
 

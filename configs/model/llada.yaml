@@ -1,3 +1,5 @@
 name: llada
 model_id: GSAI-ML/LLaDA-8B-Instruct
 mask_id: 126336
+generator:
+  _target_: src.generation.llada.LladaSampler

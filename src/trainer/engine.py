@@ -58,12 +58,14 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
         from src.evals import run_evaluators
 
         model.eval()
+        generator = instantiate(cfg.model.generator) if cfg.model.get("generator") else None
         scores = run_evaluators(
             cfg.eval,
             model=model,
             tokenizer=tok,
             mask_id=train_cfg.mask_id,
             device=device,
+            generator=generator,
         )
         print(f"[eval] {scores}")
 

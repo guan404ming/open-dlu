@@ -1,3 +1,5 @@
 name: dream
 model_id: Dream-org/Dream-v0-Instruct-7B
 mask_id: 151666
+generator:
+  _target_: src.generation.dream.DreamSampler
