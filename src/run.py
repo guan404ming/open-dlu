@@ -22,7 +22,8 @@ image = (
         ". /opt/venv/bin/activate && uv pip install "
         "torch==2.4.0 transformers==4.46.3 accelerate==0.34.2 "
         "datasets==2.21.0 huggingface_hub==0.25.0 numpy==1.26.4 "
-        "sentencepiece==0.2.0 hydra-core==1.3.2 setuptools bitsandbytes==0.43.1",
+        "sentencepiece==0.2.0 hydra-core==1.3.2 setuptools bitsandbytes==0.43.1 "
+        "rouge-score==0.1.2",
     )
     .env({"PATH": "/opt/venv/bin:/usr/local/bin:/usr/bin:/bin"})
     .add_local_python_source("src")
@@ -38,6 +39,7 @@ volume = modal.Volume.from_name("hf-cache", create_if_missing=True)
     timeout=60 * 60,
     volumes={"/root/.cache/huggingface": volume},
     secrets=[modal.Secret.from_name("huggingface")],
+    max_containers=8,
 )
 def train_remote(overrides: list):
     from hydra import compose, initialize_config_dir
@@ -57,19 +59,33 @@ def main(
     model: str = "",
     steps: int = 0,
     seed: int = -1,
+    trainers: str = "",
     overrides: str = "",
 ):
     # Only force a key when given, so an experiment preset can own steps/seed.
-    ov = []
+    base = []
     if experiment:
-        ov.append(f"experiment={experiment}")
+        base.append(f"experiment={experiment}")
     if model:
-        ov.append(f"model={model}")
+        base.append(f"model={model}")
     if steps:
-        ov.append(f"trainer.args.steps={steps}")
+        base.append(f"trainer.args.steps={steps}")
     if seed >= 0:
-        ov.append(f"trainer.args.seed={seed}")
+        base.append(f"trainer.args.seed={seed}")
     if overrides:
-        ov += overrides.split()
-    print(f"[overrides] {ov}")
-    print(train_remote.remote(ov))
+        base += overrides.split()
+
+    if not trainers:                       # single run
+        print(f"[overrides] {base}")
+        print(train_remote.remote(base))
+        return
+
+    names = [t.strip() for t in trainers.split(",") if t.strip()]
+    jobs = [(base + [f"trainer={n}"],) for n in names]
+    results = list(train_remote.starmap(jobs))   # parallel, one container each
+
+    print(f"\n{'trainer':9s} {'bio↓':>7} {'mmlu':>7} {'bio_adj':>8} {'non_bio':>8}")
+    for n, r in zip(names, results):
+        s = (r or {}).get("scores", {})
+        print(f"{n:9s} {s.get('wmdp_bio', 0):>7.3f} {s.get('mmlu_full', 0):>7.3f} "
+              f"{s.get('mmlu_bio_adj', 0):>8.3f} {s.get('mmlu_non_bio', 0):>8.3f}")

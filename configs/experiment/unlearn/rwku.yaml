@@ -1,0 +1,8 @@
+# @package _global_
+# RWKU unlearning preset (entity forgetting; generation-based eval).
+#   modal run src/run.py --experiment unlearn/rwku
+defaults:
+  - override /model: llada
+  - override /data: rwku
+  - override /trainer: cap
+  - override /eval: rwku

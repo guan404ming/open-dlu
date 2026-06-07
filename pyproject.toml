@@ -16,6 +16,7 @@ train = [
     "accelerate",
     "datasets",
     "bitsandbytes",
+    "rouge-score",
 ]
 
 [build-system]

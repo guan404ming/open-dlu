@@ -1,0 +1,8 @@
+# Generation-based RWKU evaluator (rougeL recall on forget / neighbor probes).
+rwku:
+  handler: Evaluator
+  metrics:
+    rwku:
+      handler: rwku
+      n_entities: 10
+      max_per_split: 100

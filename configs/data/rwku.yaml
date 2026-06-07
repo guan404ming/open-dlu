@@ -1,0 +1,9 @@
+name: rwku
+n_chunks: 500
+forget:
+  _target_: src.data.RwkuCorpus
+  n_entities: 10
+retain:
+  _target_: src.data.HFTextCorpus
+  path: wikitext
+  name: wikitext-2-raw-v1

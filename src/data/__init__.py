@@ -47,3 +47,22 @@ class HFTextCorpus:
             seq_len,
             self.min_len,
         )
+
+
+class RwkuCorpus:
+    """RWKU (Cao 2024) forget entities: intro bios + cloze/QA probes, chunked."""
+
+    def __init__(self, n_entities: int = 10, repeat: int = 300):
+        self.n_entities = n_entities
+        self.repeat = repeat
+
+    def load(self, tokenizer, n_chunks, seq_len):
+        ft = load_dataset("jinzhuoran/RWKU", "forget_target", split="train").select(
+            range(self.n_entities)
+        )
+        names = {r["target"] for r in ft}
+        texts = [r["intro"] for r in ft]
+        for cfg in ("forget_level1", "forget_level2"):
+            ds = load_dataset("jinzhuoran/RWKU", cfg, split="test")
+            texts += [f"{r['query']} {r['answer']}" for r in ds if r["subject"] in names]
+        return chunkify(texts * self.repeat, tokenizer, n_chunks, seq_len)
