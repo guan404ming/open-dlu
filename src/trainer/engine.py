@@ -38,8 +38,10 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
         else None
     )
 
-    fc = instantiate(cfg.data.forget).load(tok, cfg.data.n_chunks, train_cfg.seq_len)
-    rc = instantiate(cfg.data.retain).load(tok, cfg.data.n_chunks, train_cfg.seq_len)
+    # A null term needs no corpus (finetune drops forget, GA drops retain).
+    nc, sl = cfg.data.n_chunks, train_cfg.seq_len
+    fc = [] if forget.is_null else instantiate(cfg.data.forget).load(tok, nc, sl)
+    rc = [] if retain.is_null else instantiate(cfg.data.retain).load(tok, nc, sl)
     print(f"[data] forget={len(fc)} retain={len(rc)} chunks")
 
     pipe = UnlearnPipeline(
@@ -68,6 +70,13 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
             generator=generator,
         )
         print(f"[eval] {scores}")
+
+    # Persist the trained model as a HuggingFace dir so it can be reused as a
+    # `model.model_id` (e.g. a finetuned TOFU / MUSE target to then unlearn).
+    if cfg.get("output_dir"):
+        pipe.acc.unwrap_model(pipe.model).save_pretrained(cfg.output_dir)
+        tok.save_pretrained(cfg.output_dir)
+        print(f"[save] -> {cfg.output_dir}")
 
     return {
         "train_min": train_min,

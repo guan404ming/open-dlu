@@ -116,6 +116,11 @@ def wmdp_bio(model, tokenizer, mask_id, device, **kw):
     ds = list(load_dataset("cais/wmdp", "wmdp-bio", split="test"))
     return {"wmdp_bio": mcq_acc(model, tokenizer, ds, mask_id, device)}
 
+@unlearning_metric(name="wmdp_cyber")
+def wmdp_cyber(model, tokenizer, mask_id, device, **kw):
+    ds = list(load_dataset("cais/wmdp", "wmdp-cyber", split="test"))
+    return {"wmdp_cyber": mcq_acc(model, tokenizer, ds, mask_id, device)}
+
 
 @unlearning_metric(name="mmlu")
 def mmlu(model, tokenizer, mask_id, device, per_subject=30, **kw):

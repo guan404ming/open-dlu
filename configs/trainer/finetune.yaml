@@ -1,0 +1,19 @@
+# Supervised MDLM finetune: learn a full corpus, no forget term. Produces the
+# target model that TOFU / MUSE unlearning then forgets from (no public DLM
+# target exists, unlike the Llama checkpoints OpenUnlearning ships).
+defaults:
+  - base
+forget:
+  _target_: src.component.forget.null.NullForget
+retain:
+  _target_: src.component.retain.ce.CERetain
+weighting:
+  _target_: src.component.weighting.one_over_t.OneOverT
+adapter:
+  _target_: src.component.adapter.full_model.FullModel
+mask:
+  _target_: src.component.mask.bernoulli.BernoulliMask
+args:
+  lr: 1e-5
+  steps: 2000
+  grad_accum: 8

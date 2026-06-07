@@ -1,0 +1,8 @@
+# Generation-based MUSE evaluator (verbatim + knowledge memorization, rougeL-f1).
+muse:
+  handler: Evaluator
+  metrics:
+    muse:
+      handler: muse
+      data_split: News
+      max_eval: 100

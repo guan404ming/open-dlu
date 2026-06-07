@@ -1,0 +1,10 @@
+# @package _global_
+# Finetune LLaDA on the full MUSE-News training text, creating the target that
+# `experiment=unlearn/muse` then forgets.
+#   modal run src/run.py --experiment finetune/muse \
+#     --output-dir /root/.cache/huggingface/open-dlu/muse_llada_full
+defaults:
+  - override /model: llada
+  - override /data: muse_train
+  - override /trainer: finetune
+  - override /eval: muse

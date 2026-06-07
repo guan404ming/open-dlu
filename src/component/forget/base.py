@@ -13,6 +13,7 @@ class ForgetLoss(ABC):
     """
 
     needs_ref: bool = False
+    is_null: bool = False  # if True, the pipeline skips this term's forward pass
 
     @abstractmethod
     def __call__(

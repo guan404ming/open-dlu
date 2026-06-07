@@ -1,0 +1,8 @@
+# @package _global_
+# WMDP-cyber unlearning preset (hazardous-cyber corpus; MCQ + MMLU eval).
+#   modal run src/run.py --experiment unlearn/wmdp_cyber
+defaults:
+  - override /model: llada
+  - override /data: wmdp_cyber
+  - override /trainer: cap
+  - override /eval: wmdp_cyber

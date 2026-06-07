@@ -18,17 +18,19 @@ class LladaSampler(Sampler):
         self.block_length = block_length
         self.max_new = max_new
 
-    def _format(self, tok, q: str) -> str:
+    def _format(self, tok, q: str, chat: bool = True) -> str:
+        if not chat:
+            return q
         if getattr(tok, "chat_template", None):
             return tok.apply_chat_template(
                 [{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
         return f"Q: {q}\nA:"
 
     @torch.no_grad()
-    def generate(self, model, tokenizer, prompt, mask_id, device, max_new=None):
+    def generate(self, model, tokenizer, prompt, mask_id, device, max_new=None, chat=True):
         gen_length = max_new or self.max_new
         pids = torch.tensor(
-            tokenizer(self._format(tokenizer, prompt), add_special_tokens=False).input_ids,
+            tokenizer(self._format(tokenizer, prompt, chat), add_special_tokens=False).input_ids,
             dtype=torch.long, device=device)[None, :]
         plen = pids.shape[1]
         x = torch.full((1, plen + gen_length), mask_id, dtype=torch.long, device=device)

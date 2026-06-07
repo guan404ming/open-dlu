@@ -15,6 +15,7 @@ class RetainLoss(ABC):
     needs_hidden_states: bool = (
         False  # set True to receive model/frozen layer activations
     )
+    is_null: bool = False  # if True, the pipeline skips this term's forward pass
 
     @abstractmethod
     def __call__(

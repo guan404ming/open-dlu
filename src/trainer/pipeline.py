@@ -160,20 +160,31 @@ class UnlearnPipeline:
         return c.alpha_retain * w * loss
 
     def _loss(self, fids, rids):
+        """Objective over whichever terms are active. A null component (e.g.
+        finetune has no forget, GA has no retain) contributes nothing and its
+        forward pass is skipped, so `fids` / `rids` may be None."""
         c = self.cfg
-        t_f, t_r = self._sample_t(), self._sample_t()
-        forget, ce = self._forget_term(fids, t_f, self.weighting(t_f))
-        retain = self._retain_term(rids, t_r, self.weighting(t_r))
-        return c.gamma_forget * forget + retain, ce
+        forget, ce = 0.0, 0.0
+        if fids is not None:
+            t_f = self._sample_t()
+            forget, ce = self._forget_term(fids, t_f, self.weighting(t_f))
+        retain = 0.0
+        if rids is not None:
+            t_r = self._sample_t()
+            retain = self._retain_term(rids, t_r, self.weighting(t_r))
+        loss = c.gamma_forget * forget + retain
+        return loss, (ce if fids is not None else loss.item())
 
     def train(self, get_forget, get_retain, log_every: int = 100):
         c = self.cfg
+        skip_f = getattr(self.forget_loss, "is_null", False)
+        skip_r = getattr(self.retain_loss, "is_null", False)
         self.model.train()
         t0, done = time.time(), 0
         while done < c.steps:
             with self.acc.accumulate(self.model):
-                fids = get_forget().to(self.acc.device)
-                rids = get_retain().to(self.acc.device)
+                fids = None if skip_f else get_forget().to(self.acc.device)
+                rids = None if skip_r else get_retain().to(self.acc.device)
                 loss, ce = self._loss(fids, rids)
                 self.acc.backward(loss)
                 if self.acc.sync_gradients:

@@ -5,6 +5,7 @@ from src.component.retain.base import RetainLoss
 
 class NullRetain(RetainLoss):
     needs_frozen_logits = False
+    is_null = True  # pipeline skips the retain pass entirely
 
     def __call__(self, *, model_logits, target, mask, **_):
         return model_logits.sum() * 0.0

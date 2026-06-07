@@ -61,6 +61,7 @@ def main(
     seed: int = -1,
     trainers: str = "",
     overrides: str = "",
+    output_dir: str = "",
 ):
     # Only force a key when given, so an experiment preset can own steps/seed.
     base = []
@@ -72,6 +73,8 @@ def main(
         base.append(f"trainer.args.steps={steps}")
     if seed >= 0:
         base.append(f"trainer.args.seed={seed}")
+    if output_dir:
+        base.append(f"+output_dir={output_dir}")  # save trained model as a HF dir
     if overrides:
         base += overrides.split()
 

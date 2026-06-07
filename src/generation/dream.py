@@ -13,12 +13,15 @@ class DreamSampler(Sampler):
         self.temperature = temperature
 
     @torch.no_grad()
-    def generate(self, model, tokenizer, prompt, mask_id, device, max_new=None):
+    def generate(self, model, tokenizer, prompt, mask_id, device, max_new=None, chat=True):
         gen_length = max_new or self.max_new
-        ids = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            return_tensors="pt", add_generation_prompt=True,
-        ).to(device)
+        if chat:
+            ids = tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                return_tensors="pt", add_generation_prompt=True,
+            ).to(device)
+        else:
+            ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
         out = model.diffusion_generate(
             ids,
             attention_mask=torch.ones_like(ids),

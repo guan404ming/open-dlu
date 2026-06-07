@@ -1,0 +1,9 @@
+# @package _global_
+# MUSE-News unlearning preset (news corpus; verbatim + knowledge-memorization eval).
+# Assumes a target model that has learned MUSE; see experiment=finetune/muse.
+#   modal run src/run.py --experiment unlearn/muse
+defaults:
+  - override /model: llada
+  - override /data: muse_news
+  - override /trainer: cap
+  - override /eval: muse

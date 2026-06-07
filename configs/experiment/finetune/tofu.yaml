@@ -1,0 +1,11 @@
+# @package _global_
+# Finetune LLaDA on full TOFU so it memorises the authors, creating the target
+# that `experiment=unlearn/tofu` then forgets. Save with --output-dir, then
+# point unlearning at it via model.model_id=<dir>.
+#   modal run src/run.py --experiment finetune/tofu \
+#     --output-dir /root/.cache/huggingface/open-dlu/tofu_llada_full
+defaults:
+  - override /model: llada
+  - override /data: tofu_full
+  - override /trainer: finetune
+  - override /eval: tofu

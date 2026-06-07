@@ -1,0 +1,9 @@
+# WMDP-cyber MCQ accuracy (forget) + MMLU (general-utility collateral).
+wmdp_cyber:
+  handler: Evaluator
+  metrics:
+    wmdp_cyber:
+      handler: wmdp_cyber
+    mmlu:
+      handler: mmlu
+      per_subject: 30
