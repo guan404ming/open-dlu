@@ -1,17 +1,23 @@
-"""Composable MDLM unlearning loop.
+"""Composable MDLM unlearning loop, on top of HuggingFace Accelerate.
 
-Method-agnostic: the loop never names a method. Each forget/retain component
-declares the extra signals it needs (a frozen reference, an unconditional pass,
-hidden states) via flags, and the loop supplies exactly those.
+Accelerate owns the mechanical parts (device placement, gradient accumulation,
+gradient clipping, multi-GPU); this class owns the *diffusion* parts (sampling a
+mask ratio, masking, and the per-token loss).
+
+It is method-agnostic: the loop never names a method. Each forget/retain
+component declares the extra signals it needs (a frozen reference, an
+unconditional pass, hidden states) via flags, and the loop supplies exactly
+those. The objective is always  loss = gamma * forget + alpha * retain.
 """
 
-import math
 import os
 import random
 import time
 
 import torch
 import torch.nn.functional as F
+from accelerate import Accelerator
+from transformers import get_scheduler
 
 from src.trainer.config import TrainConfig
 
@@ -27,46 +33,45 @@ class UnlearnPipeline:
         adapter,
         mask_sampler,
         config: TrainConfig,
-        device="cuda:0",
     ):
-        self.model = model
-        self.frozen = frozen
         self.forget_loss = forget_loss
         self.retain_loss = retain_loss
         self.weighting = weighting
         self.adapter = adapter
         self.mask_sampler = mask_sampler
         self.cfg = config
-        self.device = device
 
-        adapter.setup(model)
-        if frozen is not None:
-            for p in frozen.parameters():
-                p.requires_grad = False
         torch.manual_seed(config.seed)
         random.seed(config.seed)
 
+        # Adapter picks the trainable parameters (must run before the optimizer).
+        adapter.setup(model)
         trainable = [p for p in model.parameters() if p.requires_grad]
         if config.use_8bit_optim:
             import bitsandbytes as bnb
 
-            self.optim = bnb.optim.AdamW8bit(trainable, lr=config.lr)
+            optim = bnb.optim.AdamW8bit(trainable, lr=config.lr)
         else:
-            self.optim = torch.optim.AdamW(trainable, lr=config.lr)
+            optim = torch.optim.AdamW(trainable, lr=config.lr)
+        sched = get_scheduler(
+            config.scheduler,
+            optim,
+            num_warmup_steps=config.warmup_steps,
+            num_training_steps=config.steps,
+        )
+
+        self.acc = Accelerator(gradient_accumulation_steps=config.grad_accum)
+        self.model, self.optim, self.sched = self.acc.prepare(model, optim, sched)
+        self.frozen = (
+            self.acc.prepare_model(frozen, evaluation_mode=True)
+            if frozen is not None
+            else None
+        )
         print(
             f"[pipeline] trainable {sum(p.numel() for p in trainable) / 1e6:.1f}M params"
         )
 
-    # --- helpers ---
-    def _lr_scale(self, step: int) -> float:
-        c = self.cfg
-        if step < c.warmup_steps:
-            return (step + 1) / c.warmup_steps
-        if c.cosine_decay:
-            prog = (step - c.warmup_steps) / max(1, c.steps - c.warmup_steps)
-            return 0.5 * (1 + math.cos(math.pi * prog))
-        return 1.0
-
+    # --- diffusion helpers ---
     def _sample_t(self) -> float:
         c = self.cfg
         return c.t_min + (c.t_max - c.t_min) * torch.rand(()).item()
@@ -80,9 +85,11 @@ class UnlearnPipeline:
         return self.mask_sampler(ids, t, **kw)
 
     def _ce(self, logits, target, mask):
+        """Per-masked-token cross-entropy (fp32 for stability)."""
         return F.cross_entropy(logits[mask].float(), target[mask], reduction="none")
 
     def _hooks(self, model, layers, out: dict) -> list:
+        """Capture block outputs at `layers` into `out` (for activation-space methods)."""
         prefix = getattr(self.adapter, "block_key", None) or "blocks."
         hooks = []
         for name, mod in model.named_modules():
@@ -97,7 +104,7 @@ class UnlearnPipeline:
                     )
         return hooks
 
-    # --- loss terms ---
+    # --- loss terms (component-driven; the loop never special-cases a method) ---
     def _forget_term(self, ids, t, w):
         c, fl = self.cfg, self.forget_loss
         mask = self._mask(ids, t)
@@ -152,35 +159,35 @@ class UnlearnPipeline:
         )
         return c.alpha_retain * w * loss
 
-    def _step(self, fids, rids, step):
+    def _loss(self, fids, rids):
         c = self.cfg
-        for g in self.optim.param_groups:
-            g["lr"] = c.lr * self._lr_scale(step)
         t_f, t_r = self._sample_t(), self._sample_t()
         forget, ce = self._forget_term(fids, t_f, self.weighting(t_f))
         retain = self._retain_term(rids, t_r, self.weighting(t_r))
-        loss = forget + retain
-        self.optim.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            [p for p in self.model.parameters() if p.requires_grad], c.grad_clip
-        )
-        self.optim.step()
-        return loss.item(), ce
+        return c.gamma_forget * forget + retain, ce
 
     def train(self, get_forget, get_retain, log_every: int = 100):
         c = self.cfg
         self.model.train()
-        t0 = time.time()
-        for step in range(c.steps):
-            loss, ce = self._step(
-                get_forget().to(self.device), get_retain().to(self.device), step
-            )
-            if (step + 1) % log_every == 0:
-                print(f"[step {step + 1}/{c.steps}] ce={ce:.2f} loss={loss:.3f}")
+        t0, done = time.time(), 0
+        while done < c.steps:
+            with self.acc.accumulate(self.model):
+                fids = get_forget().to(self.acc.device)
+                rids = get_retain().to(self.acc.device)
+                loss, ce = self._loss(fids, rids)
+                self.acc.backward(loss)
+                if self.acc.sync_gradients:
+                    self.acc.clip_grad_norm_(self.model.parameters(), c.grad_clip)
+                self.optim.step()
+                self.sched.step()
+                self.optim.zero_grad()
+            if self.acc.sync_gradients:  # one real optimizer step
+                done += 1
+                if done % log_every == 0:
+                    print(f"[step {done}/{c.steps}] ce={ce:.2f} loss={loss.item():.3f}")
         print(f"[train] done in {(time.time() - t0) / 60:.1f} min")
 
     def save(self, path: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.adapter.state_dict(self.model), path)
+        torch.save(self.adapter.state_dict(self.acc.unwrap_model(self.model)), path)
         print(f"[save] -> {path}")

@@ -43,7 +43,7 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
     print(f"[data] forget={len(fc)} retain={len(rc)} chunks")
 
     pipe = UnlearnPipeline(
-        model, frozen, forget, retain, weighting, adapter, mask, train_cfg, device
+        model, frozen, forget, retain, weighting, adapter, mask, train_cfg
     )
     t0 = time.time()
     pipe.train(
