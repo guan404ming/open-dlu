@@ -1,0 +1,8 @@
+name: tofu
+n_chunks: 200
+forget:
+  _target_: src.data.TofuCorpus
+  split: forget10
+retain:
+  _target_: src.data.TofuCorpus
+  split: retain90

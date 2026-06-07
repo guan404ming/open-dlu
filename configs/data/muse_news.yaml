@@ -1,0 +1,12 @@
+name: muse_news
+n_chunks: 500
+forget:
+  _target_: src.data.HFTextCorpus
+  path: muse-bench/MUSE-News
+  name: raw
+  split: forget
+retain:
+  _target_: src.data.HFTextCorpus
+  path: muse-bench/MUSE-News
+  name: raw
+  split: retain1

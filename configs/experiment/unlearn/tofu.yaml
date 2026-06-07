@@ -1,0 +1,8 @@
+# @package _global_
+# TOFU unlearning preset (fictional-author QA; generation-based eval).
+#   modal run src/run.py --experiment unlearn/tofu
+defaults:
+  - override /model: llada
+  - override /data: tofu
+  - override /trainer: cap
+  - override /eval: tofu

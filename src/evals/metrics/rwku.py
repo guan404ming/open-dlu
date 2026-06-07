@@ -6,19 +6,7 @@ so this metric works for any MDLM that provides one.
 from datasets import load_dataset
 
 from src.evals.metrics.base import unlearning_metric
-
-_SCORER = None
-
-
-def _rouge_l_recall(pred: str, gt: str) -> float:
-    global _SCORER
-    if not pred or not gt:
-        return 0.0
-    if _SCORER is None:
-        from rouge_score import rouge_scorer
-
-        _SCORER = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
-    return _SCORER.score(gt, pred)["rougeL"].recall
+from src.evals.metrics._text import rouge_l_recall
 
 
 def _probe(generator, model, tok, configs, names, mask_id, device, cap):
@@ -28,7 +16,7 @@ def _probe(generator, model, tok, configs, names, mask_id, device, cap):
                 if r["subject"] in names][:cap]
         for r in rows:
             pred = generator.generate(model, tok, r["query"], mask_id, device)
-            rls.append(_rouge_l_recall(pred, r["answer"]))
+            rls.append(rouge_l_recall(pred, r["answer"]))
     return sum(rls) / max(len(rls), 1)
 
 

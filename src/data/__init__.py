@@ -66,3 +66,30 @@ class RwkuCorpus:
             ds = load_dataset("jinzhuoran/RWKU", cfg, split="test")
             texts += [f"{r['query']} {r['answer']}" for r in ds if r["subject"] in names]
         return chunkify(texts * self.repeat, tokenizer, n_chunks, seq_len)
+
+
+class TofuCorpus:
+    """TOFU (Maini 2024) fictional-author QA, chat-formatted + chunked."""
+
+    def __init__(self, split: str = "forget10", repeat: int = 200):
+        self.split = split
+        self.repeat = repeat
+
+    @staticmethod
+    def _fmt(tok, q, a):
+        if getattr(tok, "chat_template", None):
+            return tok.apply_chat_template(
+                [{"role": "user", "content": q}, {"role": "assistant", "content": a}],
+                tokenize=False, add_generation_prompt=False)
+        return f"Q: {q}\nA: {a}"
+
+    def load(self, tokenizer, n_chunks, seq_len):
+        import json
+
+        from huggingface_hub import hf_hub_download
+
+        path = hf_hub_download("locuslab/TOFU", f"{self.split}.json", repo_type="dataset")
+        with open(path) as f:
+            qa = [json.loads(line) for line in f if line.strip()]
+        texts = [self._fmt(tokenizer, x["question"], x["answer"]) for x in qa]
+        return chunkify(texts * self.repeat, tokenizer, n_chunks, seq_len)

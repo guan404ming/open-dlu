@@ -1,0 +1,7 @@
+# Generation-based TOFU evaluator (rougeL recall on forget / retain QA).
+tofu:
+  handler: Evaluator
+  metrics:
+    tofu:
+      handler: tofu
+      max_eval: 100

@@ -1,0 +1,10 @@
+name: wmdp_cyber
+n_chunks: 500
+forget:
+  _target_: src.data.HFTextCorpus
+  path: cais/wmdp-corpora
+  name: cyber-forget-corpus
+retain:
+  _target_: src.data.HFTextCorpus
+  path: cais/wmdp-corpora
+  name: cyber-retain-corpus
