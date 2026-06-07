@@ -1,0 +1,8 @@
+# Main entry. Compose model + data + trainer (method) + train hyperparameters.
+# Override on the CLI, or pick a full preset with `+experiment=unlearn/wmdp`.
+defaults:
+  - model: llada
+  - data: wmdp_bio
+  - trainer: cap
+  - train: default
+  - _self_

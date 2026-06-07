@@ -1,0 +1,15 @@
+# A trainer = a named method, composed inline from the five components.
+# Override a knob: `trainer.forget.cap=2 trainer.adapter.layers=[10,11,12]`.
+forget:
+  _target_: src.component.forget.capped.CappedForget
+  cap: 1.0
+retain:
+  _target_: src.component.retain.ce.CERetain
+weighting:
+  _target_: src.component.weighting.min_snr.MinSnr
+  gamma: 2.0
+adapter:
+  _target_: src.component.adapter.layer_restricted.LayerRestricted
+  layers: [5, 6, 7]
+mask:
+  _target_: src.component.mask.bernoulli.BernoulliMask
