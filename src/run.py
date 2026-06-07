@@ -52,8 +52,23 @@ def train_remote(overrides: list):
 
 
 @app.local_entrypoint()
-def main(steps: int = 1, seed: int = 42, model: str = "llada", overrides: str = ""):
-    ov = [f"trainer.args.steps={steps}", f"trainer.args.seed={seed}", f"model={model}"]
+def main(
+    experiment: str = "",
+    model: str = "",
+    steps: int = 0,
+    seed: int = -1,
+    overrides: str = "",
+):
+    # Only force a key when given, so an experiment preset can own steps/seed.
+    ov = []
+    if experiment:
+        ov.append(f"experiment={experiment}")
+    if model:
+        ov.append(f"model={model}")
+    if steps:
+        ov.append(f"trainer.args.steps={steps}")
+    if seed >= 0:
+        ov.append(f"trainer.args.seed={seed}")
     if overrides:
         ov += overrides.split()
     print(f"[overrides] {ov}")

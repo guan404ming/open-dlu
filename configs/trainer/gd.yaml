@@ -1,4 +1,7 @@
-# Gradient Difference: GA forget + CE retain (full model).
+# Gradient Difference (full-model GA + CE retain). Also the base for the other
+# full-model baselines: NPO / SimNPO / WGA inherit it and just swap the forget loss.
+defaults:
+  - base
 forget:
   _target_: src.component.forget.grad_ascent.GradAscent
 retain:
@@ -9,19 +12,6 @@ adapter:
   _target_: src.component.adapter.full_model.FullModel
 mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
-
 args:
-  steps: 500
-  warmup_steps: 150
   lr: 2e-5
-  alpha_retain: 1.0
-  batch_forget: 2
-  batch_retain: 2
-  seq_len: 512
-  grad_clip: 1.0
-  t_min: 0.1
-  t_max: 0.9
-  seed: 42
-  mask_id: ${model.mask_id}
   use_8bit_optim: true
-  scheduler: cosine

@@ -1,0 +1,8 @@
+# @package _global_
+# WMDP-bio unlearning preset (uses the trainer's own DLM-validated args).
+#   modal run src/run.py --experiment unlearn/wmdp
+defaults:
+  - override /model: llada
+  - override /data: wmdp_bio
+  - override /trainer: cap
+  - override /eval: wmdp

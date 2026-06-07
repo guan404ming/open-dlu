@@ -1,8 +1,9 @@
-# Main entry. Compose model + data + trainer (method) + train hyperparameters.
-# Override on the CLI, or pick a full preset with `+experiment=unlearn/wmdp`.
+# Train entry. Defaults give a runnable recipe; `experiment=` swaps the whole
+# preset (model + data + trainer + eval + dataset-level args).
 defaults:
   - model: llada
   - data: wmdp_bio
   - trainer: cap
   - eval: wmdp
+  - experiment: null
   - _self_

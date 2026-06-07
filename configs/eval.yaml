@@ -1,5 +1,6 @@
-# Standalone evaluation entry (python -m src.eval).
+# Standalone eval entry (python -m src.eval).
 defaults:
   - model: llada
   - eval: wmdp
+  - experiment: null
   - _self_
