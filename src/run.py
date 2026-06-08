@@ -13,17 +13,23 @@ import modal
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so `import src` resolves when run as a script
 
+# torch 2.7/cu128 covers both Hopper (H100/H200, sm_90) and Blackwell (B200,
+# sm_100) from one image. torch comes from the cu128 index, the rest from PyPI
+# (two installs so the index URL doesn't leak to the non-torch wheels). No
+# bitsandbytes: it's imported only when trainer.args.use_8bit_optim is set, and
+# full-model SFT now runs on B200's 192 GB where 8-bit optim is unnecessary.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git")
     .run_commands(
         "pip install uv",
         "uv venv /opt/venv",
+        ". /opt/venv/bin/activate && uv pip install torch==2.7.0 "
+        "--index-url https://download.pytorch.org/whl/cu128",
         ". /opt/venv/bin/activate && uv pip install "
-        "torch==2.4.0 transformers==4.46.3 accelerate==0.34.2 "
+        "transformers==4.46.3 accelerate==0.34.2 "
         "datasets==2.21.0 huggingface_hub==0.25.0 numpy==1.26.4 "
-        "sentencepiece==0.2.0 hydra-core==1.3.2 setuptools bitsandbytes==0.43.1 "
-        "rouge-score==0.1.2",
+        "sentencepiece==0.2.0 hydra-core==1.3.2 setuptools rouge-score==0.1.2",
     )
     .env({"PATH": "/opt/venv/bin:/usr/local/bin:/usr/bin:/bin"})
     .add_local_python_source("src")
@@ -34,14 +40,7 @@ app = modal.App("open-dlu", image=image)
 volume = modal.Volume.from_name("hf-cache", create_if_missing=True)
 
 
-@app.function(
-    gpu="H100:1",
-    timeout=60 * 60 * 8,  # SFT rounds can be many epochs; billed on actual use
-    volumes={"/root/.cache/huggingface": volume},
-    secrets=[modal.Secret.from_name("huggingface")],
-    max_containers=8,
-)
-def train_remote(overrides: list):
+def _train(overrides: list):
     from hydra import compose, initialize_config_dir
     from omegaconf import OmegaConf
 
@@ -60,6 +59,41 @@ def train_remote(overrides: list):
     return result
 
 
+# Same body on two GPU tiers so we can A/B speed and cost (see `gpu_bench`).
+_fn = dict(
+    timeout=60 * 60 * 8,  # SFT rounds can be many epochs; billed on actual use
+    volumes={"/root/.cache/huggingface": volume},
+    secrets=[modal.Secret.from_name("huggingface")],
+    max_containers=8,
+)
+train_remote = app.function(gpu="H100:1", **_fn)(_train)
+train_remote_b200 = app.function(gpu="B200:1", **_fn)(_train)
+
+
+def _fn_for(gpu: str):
+    """Pick the GPU-tier function ("b200" -> Blackwell, else the H100 default)."""
+    return train_remote_b200 if gpu.lower().startswith("b200") else train_remote
+
+
+@app.local_entrypoint()
+def spawn_train(
+    experiment: str = "", overrides: str = "", output_dir: str = "", gpu: str = ""
+):
+    """Fire-and-forget a single training run server-side and exit immediately.
+    Robust to local disconnect/shutdown (unlike a blocking `.remote()` stream).
+    Launch with `modal run --detach` so the app outlives the client; retrieve via
+    `modal volume ls` (the saved checkpoint) and `modal app logs` (eval scores)."""
+    base = []
+    if experiment:
+        base.append(f"experiment={experiment}")
+    if output_dir:
+        base.append(f"+output_dir={output_dir}")
+    if overrides:
+        base += overrides.split()
+    call = _fn_for(gpu).spawn(base)
+    print(f"[spawned] {call.object_id}  gpu={gpu or 'H100'}  overrides={base}")
+
+
 @app.local_entrypoint()
 def main(
     experiment: str = "",
@@ -69,6 +103,7 @@ def main(
     trainers: str = "",
     overrides: str = "",
     output_dir: str = "",
+    gpu: str = "",
 ):
     # Only force a key when given, so an experiment preset can own steps/seed.
     base = []
@@ -85,14 +120,15 @@ def main(
     if overrides:
         base += overrides.split()
 
+    fn = _fn_for(gpu)
     if not trainers:  # single run
-        print(f"[overrides] {base}")
-        print(train_remote.remote(base))
+        print(f"[overrides] {base}  gpu={gpu or 'H100'}")
+        print(fn.remote(base))
         return
 
     names = [t.strip() for t in trainers.split(",") if t.strip()]
     jobs = [(base + [f"trainer={n}"],) for n in names]
-    results = list(train_remote.starmap(jobs))  # parallel, one container each
+    results = list(fn.starmap(jobs))  # parallel, one container each
 
     print(f"\n{'trainer':9s} {'bio↓':>7} {'mmlu':>7} {'bio_adj':>8} {'non_bio':>8}")
     for n, r in zip(names, results):
@@ -154,25 +190,45 @@ def finetune_loop(
 
 
 @app.local_entrypoint()
-def cap_sweep(grid: str = "1.0:500,2.0:500,3.0:500", layers: str = "", lr: float = 0.0):
+def cap_sweep(grid: str = "1.0:500,2.0:500,3.0:500", layers: str = ""):
     """Sweep the cap recipe on the default config (cap / wmdp_bio / wmdp) to find
-    the Pareto-best operating point. `grid` is comma-separated `cap:steps` points;
-    optionally override the localized `layers` (e.g. "4,5,6,7,8") and `lr`."""
+    the Pareto-best operating point. `grid` is comma-separated `cap:steps[:lr]`
+    points (lr optional); optionally override the localized `layers` ("4,5,6,7,8")."""
     pts = [p.split(":") for p in grid.split(",")]
     jobs = []
-    for cap, steps in pts:
-        ov = [f"trainer.forget.cap={cap}", f"trainer.args.steps={steps}"]
+    for p in pts:
+        ov = [f"trainer.forget.cap={p[0]}", f"trainer.args.steps={p[1]}"]
+        if len(p) > 2:
+            ov.append(f"trainer.args.lr={p[2]}")
         if layers:
             ov.append(f"trainer.adapter.layers=[{layers}]")
-        if lr:
-            ov.append(f"trainer.args.lr={lr}")
         jobs.append((ov,))
     results = list(train_remote.starmap(jobs))
 
-    print(f"\n{'cap':>5}{'steps':>7}{'bio↓':>8}{'mmlu':>8}{'bio_adj':>9}{'non_bio':>9}")
-    for (cap, steps), r in zip(pts, results):
+    print(f"\n{'cap':>5}{'steps':>7}{'lr':>9}{'bio↓':>8}{'mmlu':>8}{'bio_adj':>9}{'non_bio':>9}")
+    for p, r in zip(pts, results):
+        s = (r or {}).get("scores", {})
+        lr = p[2] if len(p) > 2 else "base"
+        print(
+            f"{p[0]:>5}{p[1]:>7}{lr:>9}{s.get('wmdp_bio', 0):>8.3f}{s.get('mmlu_full', 0):>8.3f}"
+            f"{s.get('mmlu_bio_adj', 0):>9.3f}{s.get('mmlu_non_bio', 0):>9.3f}"
+        )
+
+
+@app.local_entrypoint()
+def variant_sweep(specs: str):
+    """Run labelled method variants in parallel on the default config (wmdp_bio,
+    domain retain). `specs` is semicolon-separated `label|override override ...`,
+    e.g. "npo_b.05|trainer=npo trainer.forget.beta=0.05;wga_g2|trainer=wga
+    trainer.forget.gamma=2.0". Lets each method tune its own hyperparameters."""
+    items = [s.split("|", 1) for s in specs.split(";") if s.strip()]
+    jobs = [(ov.split(),) for _, ov in items]
+    results = list(train_remote.starmap(jobs))
+
+    print(f"\n{'variant':16s}{'bio↓':>8}{'mmlu':>8}{'bio_adj':>9}{'non_bio':>9}")
+    for (label, _), r in zip(items, results):
         s = (r or {}).get("scores", {})
         print(
-            f"{cap:>5}{steps:>7}{s.get('wmdp_bio', 0):>8.3f}{s.get('mmlu_full', 0):>8.3f}"
+            f"{label:16s}{s.get('wmdp_bio', 0):>8.3f}{s.get('mmlu_full', 0):>8.3f}"
             f"{s.get('mmlu_bio_adj', 0):>9.3f}{s.get('mmlu_non_bio', 0):>9.3f}"
         )

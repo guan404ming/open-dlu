@@ -19,4 +19,4 @@ args:
   grad_accum: 8
   scheduler: constant  # SFT at a flat LR (resumable across checkpoint rounds)
   warmup_steps: 0
-  use_8bit_optim: true  # full-model 8B FT is at the 80GB edge with fp32 AdamW
+  use_8bit_optim: false  # run full-model 8B FT on B200 (192GB); fp32 AdamW fits

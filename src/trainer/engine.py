@@ -111,10 +111,23 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
     # Persist the trained model as a HuggingFace dir so it can be reused as a
     # `model.model_id` (e.g. a finetuned TOFU / MUSE target to then unlearn).
     if cfg.get("output_dir"):
+        import os
+
         pipe.acc.unwrap_model(pipe.model).save_pretrained(cfg.output_dir)
         tok.save_pretrained(cfg.output_dir)
         _canonicalize_auto_map(cfg.output_dir)
-        print(f"[save] -> {cfg.output_dir}")
+        # Pin the exact recipe next to the weights so a checkpoint chain stays
+        # reproducible even when configs are edited between runs. `data` records
+        # the corpus actually trained on (forget/retain item counts) since a
+        # capped n_chunks can differ from what loaded.
+        snap = OmegaConf.create(
+            {"config": cfg, "resolved": {"steps": train_cfg.steps,
+                                         "forget_items": len(fc),
+                                         "retain_items": len(rc)}}
+        )
+        OmegaConf.save(snap, os.path.join(cfg.output_dir, "run_config.yaml"))
+        print(f"[save] -> {cfg.output_dir}  (steps={train_cfg.steps} "
+              f"forget={len(fc)} retain={len(rc)})")
 
     return {
         "train_min": train_min,
