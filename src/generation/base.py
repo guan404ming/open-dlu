@@ -9,6 +9,18 @@ from abc import ABC, abstractmethod
 
 
 class Sampler(ABC):
+    # Markers at which a decoded completion is cut (chat/EOS/turn boundaries).
+    _STOPS = ("<|endoftext|>", "<|im_end|>", "\nQ:", "\n\n")
+
+    @classmethod
+    def _truncate(cls, text: str) -> str:
+        """Cut a decoded completion at the first stop marker and strip it."""
+        for stop in cls._STOPS:
+            k = text.find(stop)
+            if k >= 0:
+                text = text[:k]
+        return text.strip()
+
     @abstractmethod
     def generate(
         self,

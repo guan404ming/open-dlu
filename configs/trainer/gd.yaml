@@ -14,4 +14,4 @@ mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
 args:
   lr: 2e-5
-  use_8bit_optim: true
+  use_8bit_optim: false  # full-model GA+CE on B200 (192GB); no bitsandbytes needed

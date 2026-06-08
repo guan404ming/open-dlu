@@ -59,20 +59,48 @@ def _train(overrides: list):
     return result
 
 
-# Same body on two GPU tiers so we can A/B speed and cost (see `gpu_bench`).
+# Same body on two GPU tiers so we can pick speed/cost per run. Each tier needs
+# a distinctly-named wrapper: Modal registers a function under its __name__, so
+# decorating the one `_train` twice collides and only the last survives.
 _fn = dict(
     timeout=60 * 60 * 8,  # SFT rounds can be many epochs; billed on actual use
     volumes={"/root/.cache/huggingface": volume},
     secrets=[modal.Secret.from_name("huggingface")],
     max_containers=8,
 )
-train_remote = app.function(gpu="H100:1", **_fn)(_train)
-train_remote_b200 = app.function(gpu="B200:1", **_fn)(_train)
+
+
+def _train_h100(overrides: list):
+    return _train(overrides)
+
+
+def _train_b200(overrides: list):
+    return _train(overrides)
+
+
+train_remote = app.function(gpu="H100:1", **_fn)(_train_h100)
+train_remote_b200 = app.function(gpu="B200:1", **_fn)(_train_b200)
 
 
 def _fn_for(gpu: str):
     """Pick the GPU-tier function ("b200" -> Blackwell, else the H100 default)."""
     return train_remote_b200 if gpu.lower().startswith("b200") else train_remote
+
+
+# Shared WMDP results table (bio forget + MMLU utility), printed by every sweep.
+_WMDP_KEYS = ("wmdp_bio", "mmlu_full", "mmlu_bio_adj", "mmlu_non_bio")
+_WMDP_TITLES = ("bio↓", "mmlu", "bio_adj", "non_bio")
+_WMDP_W = (8, 8, 9, 9)
+
+
+def _wmdp_titles() -> str:
+    return "".join(f"{t:>{w}}" for t, w in zip(_WMDP_TITLES, _WMDP_W))
+
+
+def _wmdp_cells(r) -> str:
+    """Format the four WMDP score columns from a (possibly None) run result."""
+    s = (r or {}).get("scores", {})
+    return "".join(f"{s.get(k, 0):>{w}.3f}" for k, w in zip(_WMDP_KEYS, _WMDP_W))
 
 
 @app.local_entrypoint()
@@ -130,13 +158,9 @@ def main(
     jobs = [(base + [f"trainer={n}"],) for n in names]
     results = list(fn.starmap(jobs))  # parallel, one container each
 
-    print(f"\n{'trainer':9s} {'bio↓':>7} {'mmlu':>7} {'bio_adj':>8} {'non_bio':>8}")
+    print(f"\n{'trainer':9s}" + _wmdp_titles())
     for n, r in zip(names, results):
-        s = (r or {}).get("scores", {})
-        print(
-            f"{n:9s} {s.get('wmdp_bio', 0):>7.3f} {s.get('mmlu_full', 0):>7.3f} "
-            f"{s.get('mmlu_bio_adj', 0):>8.3f} {s.get('mmlu_non_bio', 0):>8.3f}"
-        )
+        print(f"{n:9s}" + _wmdp_cells(r))
 
 
 @app.local_entrypoint()
@@ -205,14 +229,10 @@ def cap_sweep(grid: str = "1.0:500,2.0:500,3.0:500", layers: str = ""):
         jobs.append((ov,))
     results = list(train_remote.starmap(jobs))
 
-    print(f"\n{'cap':>5}{'steps':>7}{'lr':>9}{'bio↓':>8}{'mmlu':>8}{'bio_adj':>9}{'non_bio':>9}")
+    print(f"\n{'cap':>5}{'steps':>7}{'lr':>9}" + _wmdp_titles())
     for p, r in zip(pts, results):
-        s = (r or {}).get("scores", {})
         lr = p[2] if len(p) > 2 else "base"
-        print(
-            f"{p[0]:>5}{p[1]:>7}{lr:>9}{s.get('wmdp_bio', 0):>8.3f}{s.get('mmlu_full', 0):>8.3f}"
-            f"{s.get('mmlu_bio_adj', 0):>9.3f}{s.get('mmlu_non_bio', 0):>9.3f}"
-        )
+        print(f"{p[0]:>5}{p[1]:>7}{lr:>9}" + _wmdp_cells(r))
 
 
 @app.local_entrypoint()
@@ -225,10 +245,64 @@ def variant_sweep(specs: str):
     jobs = [(ov.split(),) for _, ov in items]
     results = list(train_remote.starmap(jobs))
 
-    print(f"\n{'variant':16s}{'bio↓':>8}{'mmlu':>8}{'bio_adj':>9}{'non_bio':>9}")
+    print(f"\n{'variant':16s}" + _wmdp_titles())
     for (label, _), r in zip(items, results):
-        s = (r or {}).get("scores", {})
-        print(
-            f"{label:16s}{s.get('wmdp_bio', 0):>8.3f}{s.get('mmlu_full', 0):>8.3f}"
-            f"{s.get('mmlu_bio_adj', 0):>9.3f}{s.get('mmlu_non_bio', 0):>9.3f}"
-        )
+        print(f"{label:16s}" + _wmdp_cells(r))
+
+
+# TOFU 4-split table (rougeL recall + answer prob, in the MDU column order).
+_TOFU_SPLITS = ("forget", "retain", "real_authors", "world_facts")
+_TOFU_TITLES = ("fgt_rL", "fgt_p", "ret_rL", "ret_p", "RA_rL", "RA_p", "WF_rL", "WF_p")
+
+
+def _tofu_titles() -> str:
+    return "".join(f"{t:>8}" for t in _TOFU_TITLES)
+
+
+def _tofu_cells(r) -> str:
+    s = (r or {}).get("scores", {})
+    return "".join(
+        f"{s.get(f'tofu_{sp}_rougeL', 0):>8.3f}{s.get(f'tofu_{sp}_prob', 0):>8.3f}"
+        for sp in _TOFU_SPLITS
+    )
+
+
+@app.local_entrypoint()
+def tofu_sweep(
+    trainers: str = "ga,gd,npo,sim_npo,wga,cap",
+    model_id: str = "",
+    gpu: str = "",
+    overrides: str = "",
+):
+    """Unlearn the TOFU SFT target with each method in parallel and print the
+    4-split table (rougeL recall + answer prob). `model_id` is the checkpoint to
+    forget from (the SFT target, e.g. .../ckpt_150ep)."""
+    base = ["experiment=unlearn/tofu"]
+    if model_id:
+        base.append(f"model.model_id={model_id}")
+    if overrides:
+        base += overrides.split()
+    names = [t.strip() for t in trainers.split(",") if t.strip()]
+    jobs = [(base + [f"trainer={n}"],) for n in names]
+    results = list(_fn_for(gpu).starmap(jobs))
+
+    print(f"\n{'method':9s}" + _tofu_titles())
+    for n, r in zip(names, results):
+        print(f"{n:9s}" + _tofu_cells(r))
+
+
+@app.local_entrypoint()
+def tofu_variant_sweep(specs: str, model_id: str = "", gpu: str = ""):
+    """Unlearn the TOFU target with labelled method variants in parallel, to tune
+    one method's hyperparameters. `specs` is semicolon-separated `label|override
+    ...`, e.g. "sn_gf1|trainer=sim_npo trainer.args.gamma_forget=1.0"."""
+    items = [s.split("|", 1) for s in specs.split(";") if s.strip()]
+    base = ["experiment=unlearn/tofu"]
+    if model_id:
+        base.append(f"model.model_id={model_id}")
+    jobs = [(base + ov.split(),) for _, ov in items]
+    results = list(_fn_for(gpu).starmap(jobs))
+
+    print(f"\n{'variant':16s}" + _tofu_titles())
+    for (label, _), r in zip(items, results):
+        print(f"{label:16s}" + _tofu_cells(r))

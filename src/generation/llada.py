@@ -65,8 +65,4 @@ class LladaSampler(Sampler):
                     _, sel = torch.topk(conf[j], k=int(n_xfer[j, i]))
                     x[j, sel] = x0[j, sel]
         text = tokenizer.decode(x[0, plen:].tolist(), skip_special_tokens=True)
-        for stop in ["<|endoftext|>", "<|im_end|>", "\nQ:", "\n\n"]:
-            k = text.find(stop)
-            if k >= 0:
-                text = text[:k]
-        return text.strip()
+        return self._truncate(text)

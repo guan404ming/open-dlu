@@ -26,6 +26,22 @@ def chunkify(texts, tokenizer, n_chunks, seq_len, min_len=50):
     return [ids[i * seq_len : (i + 1) * seq_len] for i in range(n)]
 
 
+def encode_qa(tokenizer, question, answer):
+    """Tokenize a chat-template QA pair into ``(prompt_ids, answer_ids)``.
+
+    The prompt is wrapped in the model's chat template with a generation prompt;
+    the answer is appended raw. Shared by ``TofuCorpus`` (answer-masked SFT) and
+    the TOFU metric (answer-probability reconstruction).
+    """
+    prompt = tokenizer.apply_chat_template(
+        [{"role": "user", "content": question}],
+        tokenize=True,
+        add_generation_prompt=True,
+    )
+    ans = tokenizer(answer, add_special_tokens=False).input_ids
+    return prompt, ans
+
+
 def batch_sampler(items, batch_size, pad_id=0):
     """Sample a padded batch as ``(ids, loss_mask)``.
 
@@ -114,12 +130,7 @@ class TofuCorpus:
             qa = [json.loads(line) for line in f if line.strip()]
         items = []
         for x in qa[:n_chunks]:
-            prompt = tokenizer.apply_chat_template(
-                [{"role": "user", "content": x["question"]}],
-                tokenize=True,
-                add_generation_prompt=True,
-            )
-            ans = tokenizer(x["answer"], add_special_tokens=False).input_ids
+            prompt, ans = encode_qa(tokenizer, x["question"], x["answer"])
             ids = (prompt + ans)[:seq_len]
             loss_mask = ([0] * len(prompt) + [1] * len(ans))[:seq_len]
             if any(loss_mask):

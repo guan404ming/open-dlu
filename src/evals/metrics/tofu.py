@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
+from src.data import encode_qa
 from src.evals.metrics.base import unlearning_metric
 from src.evals.metrics._text import rouge_l_recall
 
@@ -35,12 +36,7 @@ def _load(split_file):
 
 
 def _build(tok, question, answer, device):
-    prompt = tok.apply_chat_template(
-        [{"role": "user", "content": question}],
-        tokenize=True,
-        add_generation_prompt=True,
-    )
-    ans = tok(answer, add_special_tokens=False).input_ids
+    prompt, ans = encode_qa(tok, question, answer)
     ids = torch.tensor(prompt + ans, dtype=torch.long, device=device)[None, :]
     ans_idx = torch.arange(len(prompt), len(prompt) + len(ans), device=device)
     return ids, ans_idx

@@ -45,8 +45,4 @@ class DreamSampler(Sampler):
         text = tokenizer.decode(
             out.sequences[0, ids.shape[1] :], skip_special_tokens=True
         )
-        for stop in ["<|endoftext|>", "<|im_end|>", "\nQ:", "\n\n"]:
-            k = text.find(stop)
-            if k >= 0:
-                text = text[:k]
-        return text.strip()
+        return self._truncate(text)
