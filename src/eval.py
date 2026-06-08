@@ -17,8 +17,12 @@ def main(cfg):
     model, tok = load_model(cfg.model.model_id, device, eval_mode=True)
     generator = instantiate(cfg.model.generator) if cfg.model.get("generator") else None
     scores = run_evaluators(
-        cfg.eval, model=model, tokenizer=tok, mask_id=cfg.model.mask_id,
-        device=device, generator=generator,
+        cfg.eval,
+        model=model,
+        tokenizer=tok,
+        mask_id=cfg.model.mask_id,
+        device=device,
+        generator=generator,
     )
     print(scores)
 

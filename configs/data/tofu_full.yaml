@@ -1,7 +1,7 @@
 # Full TOFU QA (all authors) for finetuning the target model. Only `retain` is
 # read; finetune has no forget term.
 name: tofu_full
-n_chunks: 500
+n_chunks: 5000  # cap on QA items; full.json has ~4000
 retain:
   _target_: src.data.TofuCorpus
   split: full

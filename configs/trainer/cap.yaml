@@ -16,3 +16,7 @@ mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
 args:
   scheduler: constant_with_warmup
+  # Tuned on wmdp_bio (domain retain): cap=1.0 is the saturation sweet spot
+  # (raising it forgets less), and steps=800 is the depth knee
+  # (bio 0.318 / mmlu 0.624; beyond ~800 the retain term recovers MCQ).
+  steps: 800

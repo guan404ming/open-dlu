@@ -1,4 +1,5 @@
 """Shared text-overlap scoring for generation metrics."""
+
 _SCORER = None
 
 

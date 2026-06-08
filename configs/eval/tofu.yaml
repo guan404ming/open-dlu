@@ -1,7 +1,12 @@
-# Generation-based TOFU evaluator (rougeL recall on forget / retain QA).
+# TOFU evaluator (MDU protocol): rougeL recall + answer probability (MC Eq.7),
+# on four splits (forget / retain / real_authors / world_facts).
+# Full Table-2 match needs max_eval covering every split (forget10 = 400 QA) and
+# n_mc=128; lower both for cheap in-the-loop tracking.
 tofu:
   handler: Evaluator
   metrics:
     tofu:
       handler: tofu
       max_eval: 100
+      n_mc: 128
+      mc_batch: 16

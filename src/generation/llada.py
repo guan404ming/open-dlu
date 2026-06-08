@@ -1,4 +1,5 @@
 """LLaDA sampler: official block-wise low-confidence remasking (generate.py)."""
+
 import torch
 
 from src.generation.base import Sampler
@@ -6,7 +7,10 @@ from src.generation.base import Sampler
 
 def _num_transfer(mask_index, steps):
     n = mask_index.sum(dim=1, keepdim=True)
-    out = torch.zeros(n.size(0), steps, device=mask_index.device, dtype=torch.int64) + n // steps
+    out = (
+        torch.zeros(n.size(0), steps, device=mask_index.device, dtype=torch.int64)
+        + n // steps
+    )
     for i in range(n.size(0)):
         out[i, : (n % steps)[i]] += 1
     return out
@@ -23,15 +27,24 @@ class LladaSampler(Sampler):
             return q
         if getattr(tok, "chat_template", None):
             return tok.apply_chat_template(
-                [{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
+                [{"role": "user", "content": q}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
         return f"Q: {q}\nA:"
 
     @torch.no_grad()
-    def generate(self, model, tokenizer, prompt, mask_id, device, max_new=None, chat=True):
+    def generate(
+        self, model, tokenizer, prompt, mask_id, device, max_new=None, chat=True
+    ):
         gen_length = max_new or self.max_new
         pids = torch.tensor(
-            tokenizer(self._format(tokenizer, prompt, chat), add_special_tokens=False).input_ids,
-            dtype=torch.long, device=device)[None, :]
+            tokenizer(
+                self._format(tokenizer, prompt, chat), add_special_tokens=False
+            ).input_ids,
+            dtype=torch.long,
+            device=device,
+        )[None, :]
         plen = pids.shape[1]
         x = torch.full((1, plen + gen_length), mask_id, dtype=torch.long, device=device)
         x[:, :plen] = pids

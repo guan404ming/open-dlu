@@ -5,5 +5,5 @@ forget:
   path: cais/wmdp-bio-forget-corpus
 retain:
   _target_: src.data.HFTextCorpus
-  path: wikitext
-  name: wikitext-2-raw-v1
+  path: cais/wmdp-corpora
+  name: bio-retain-corpus

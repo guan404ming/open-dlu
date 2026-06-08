@@ -9,3 +9,12 @@ defaults:
   - override /data: tofu_full
   - override /trainer: finetune
   - override /eval: tofu
+
+# MDU Base-SFT recipe (paper App. B.1): AdamW lr 2e-5, batch 4, grad-accum 4,
+# 1000 epochs for LLaDA. Run in increments via the `finetune_loop` entrypoint.
+trainer:
+  args:
+    lr: 2e-5
+    batch_retain: 4
+    grad_accum: 4
+    epochs: 20

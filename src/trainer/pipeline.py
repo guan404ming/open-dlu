@@ -105,9 +105,9 @@ class UnlearnPipeline:
         return hooks
 
     # --- loss terms (component-driven; the loop never special-cases a method) ---
-    def _forget_term(self, ids, t, w):
+    def _forget_term(self, ids, lm, t, w):
         c, fl = self.cfg, self.forget_loss
-        mask = self._mask(ids, t)
+        mask = self._mask(ids, t) & lm  # only ever mask trainable positions
         x = torch.where(mask, c.mask_id, ids)
         hid, hooks = {}, []
         if getattr(fl, "needs_hidden", False):
@@ -131,9 +131,9 @@ class UnlearnPipeline:
             kw["model_hidden"] = hid
         return w * fl(**kw), ce_model.mean().item()
 
-    def _retain_term(self, ids, t, w):
+    def _retain_term(self, ids, lm, t, w):
         c, rl = self.cfg, self.retain_loss
-        mask = self._mask(ids, t)
+        mask = self._mask(ids, t) & lm  # only ever mask trainable positions
         x = torch.where(mask, c.mask_id, ids)
         mh, fh, hooks = {}, {}, []
         if rl.needs_hidden_states:
@@ -159,33 +159,38 @@ class UnlearnPipeline:
         )
         return c.alpha_retain * w * loss
 
-    def _loss(self, fids, rids):
+    def _loss(self, fb, rb):
         """Objective over whichever terms are active. A null component (e.g.
         finetune has no forget, GA has no retain) contributes nothing and its
-        forward pass is skipped, so `fids` / `rids` may be None."""
+        forward pass is skipped, so `fb` / `rb` (each an (ids, loss_mask) pair)
+        may be None."""
         c = self.cfg
         forget, ce = 0.0, 0.0
-        if fids is not None:
+        if fb is not None:
             t_f = self._sample_t()
-            forget, ce = self._forget_term(fids, t_f, self.weighting(t_f))
+            forget, ce = self._forget_term(*fb, t_f, self.weighting(t_f))
         retain = 0.0
-        if rids is not None:
+        if rb is not None:
             t_r = self._sample_t()
-            retain = self._retain_term(rids, t_r, self.weighting(t_r))
+            retain = self._retain_term(*rb, t_r, self.weighting(t_r))
         loss = c.gamma_forget * forget + retain
-        return loss, (ce if fids is not None else loss.item())
+        return loss, (ce if fb is not None else loss.item())
 
     def train(self, get_forget, get_retain, log_every: int = 100):
         c = self.cfg
         skip_f = getattr(self.forget_loss, "is_null", False)
         skip_r = getattr(self.retain_loss, "is_null", False)
+
+        def to_dev(batch):  # (ids, loss_mask) -> device
+            return tuple(x.to(self.acc.device) for x in batch)
+
         self.model.train()
         t0, done = time.time(), 0
         while done < c.steps:
             with self.acc.accumulate(self.model):
-                fids = None if skip_f else get_forget().to(self.acc.device)
-                rids = None if skip_r else get_retain().to(self.acc.device)
-                loss, ce = self._loss(fids, rids)
+                fb = None if skip_f else to_dev(get_forget())
+                rb = None if skip_r else to_dev(get_retain())
+                loss, ce = self._loss(fb, rb)
                 self.acc.backward(loss)
                 if self.acc.sync_gradients:
                     self.acc.clip_grad_norm_(self.model.parameters(), c.grad_clip)

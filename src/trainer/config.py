@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainConfig:
-    steps: int = 500  # optimizer steps
+    steps: int = 500  # optimizer steps (overridden by `epochs` if set)
+    epochs: int = 0  # if > 0, derive steps from epochs * ceil(n_examples / eff-batch)
     warmup_steps: int = 150
     lr: float = 5e-5
     scheduler: str = (

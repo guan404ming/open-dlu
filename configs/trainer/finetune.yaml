@@ -15,5 +15,8 @@ mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
 args:
   lr: 1e-5
-  steps: 2000
+  steps: 2000          # fallback when epochs is 0
   grad_accum: 8
+  scheduler: constant  # SFT at a flat LR (resumable across checkpoint rounds)
+  warmup_steps: 0
+  use_8bit_optim: true  # full-model 8B FT is at the 80GB edge with fp32 AdamW
