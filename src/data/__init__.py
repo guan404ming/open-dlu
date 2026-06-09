@@ -86,6 +86,29 @@ class HFTextCorpus:
         )
 
 
+class MmluCorpus:
+    """MMLU MCQ formatted as QA text, for use as a retain anchor. Uses the
+    validation split so it stays disjoint from the test split the mmlu metric
+    scores; the prompt format matches the evaluator."""
+
+    def __init__(self, split: str = "validation"):
+        self.split = split
+
+    def load(self, tokenizer, n_chunks, seq_len):
+        from src.evals.metrics.mcq import MMLU_SUBJECTS
+
+        texts = []
+        for subj in MMLU_SUBJECTS:
+            try:
+                ds = load_dataset("cais/mmlu", subj, split=self.split)
+            except Exception:
+                continue
+            for x in ds:
+                opts = "\n".join(f"{c}. {o}" for c, o in zip("ABCD", x["choices"]))
+                texts.append(f"{x['question']}\n{opts}\nAnswer: {'ABCD'[x['answer']]}")
+        return chunkify(texts, tokenizer, n_chunks, seq_len)
+
+
 class RwkuCorpus:
     """RWKU (Cao 2024) forget entities: intro bios + cloze/QA probes, chunked."""
 

@@ -13,5 +13,5 @@ adapter:
 mask:
   _target_: src.component.mask.bernoulli.BernoulliMask
 args:
-  lr: 2e-5
+  lr: 2e-5  # dlm-mu full-model baseline LR (cap uses base 5e-5; 5e-5 here over-forgets)
   use_8bit_optim: false  # full-model GA+CE on B200 (192GB); no bitsandbytes needed

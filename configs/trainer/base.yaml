@@ -4,7 +4,7 @@ args:
   steps: 500
   warmup_steps: 150
   lr: 5e-5
-  scheduler: cosine          # cosine / constant_with_warmup / linear
+  scheduler: constant_with_warmup   # warmup then flat, matching the dlm-mu recipe
   grad_accum: 1
   gamma_forget: 1.0
   alpha_retain: 1.0

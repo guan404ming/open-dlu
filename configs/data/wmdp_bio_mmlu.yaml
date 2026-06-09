@@ -1,0 +1,9 @@
+name: wmdp_bio_mmlu
+# WMDP-bio forget, but the retain anchor is MMLU itself (validation split, the
+# utility we measure on test) instead of the bio-retain corpus.
+n_chunks: 500
+forget:
+  _target_: src.data.HFTextCorpus
+  path: cais/wmdp-bio-forget-corpus
+retain:
+  _target_: src.data.MmluCorpus

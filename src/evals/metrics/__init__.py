@@ -5,5 +5,6 @@ from src.evals.metrics import mcq  # noqa: F401  (registers wmdp_bio, wmdp_cyber
 from src.evals.metrics import rwku  # noqa: F401  (registers rwku)
 from src.evals.metrics import tofu  # noqa: F401  (registers tofu)
 from src.evals.metrics import muse  # noqa: F401  (registers muse)
+from src.evals.metrics import corpus  # noqa: F401  (registers corpus_ce)
 
 __all__ = ["UnlearningMetric", "unlearning_metric", "get_metric"]

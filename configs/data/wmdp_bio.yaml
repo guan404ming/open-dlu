@@ -3,7 +3,9 @@ n_chunks: 500
 forget:
   _target_: src.data.HFTextCorpus
   path: cais/wmdp-bio-forget-corpus
+# WikiText retain anchor (general text), matching the dlm-mu recipe. An in-domain
+# bio-retain anchor entangles with the forget set and suppresses forgetting.
 retain:
   _target_: src.data.HFTextCorpus
-  path: cais/wmdp-corpora
-  name: bio-retain-corpus
+  path: wikitext
+  name: wikitext-2-raw-v1

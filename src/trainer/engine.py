@@ -106,7 +106,14 @@ def build_and_train(cfg, device: str = "cuda:0") -> dict:
             device=device,
             generator=generator,
         )
-        print(f"[eval] {scores}")
+        try:
+            lyr = list(cfg.trainer.adapter.layers)
+        except Exception:
+            lyr = None
+        short = lambda p: str(p).rsplit(".", 1)[-1]
+        fgt, ret = short(cfg.trainer.forget._target_), short(cfg.trainer.retain._target_)
+        seed = cfg.trainer.args.get("seed", "?")
+        print(f"[eval] forget={fgt} retain={ret} layers={lyr} seed={seed} {scores}")
 
     # Persist the trained model as a HuggingFace dir so it can be reused as a
     # `model.model_id` (e.g. a finetuned TOFU / MUSE target to then unlearn).

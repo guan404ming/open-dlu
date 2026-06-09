@@ -7,3 +7,5 @@ wmdp:
     mmlu:
       handler: mmlu
       per_subject: 30
+    retain_ce:  # masked CE on held-out bio-retain corpus (direct retain measure)
+      handler: corpus_ce

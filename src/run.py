@@ -310,15 +310,24 @@ def cap_sweep(grid: str = "1.0:500,2.0:500,3.0:500", layers: str = ""):
 
 
 @app.local_entrypoint()
-def variant_sweep(specs: str):
+def variant_sweep(specs: str, gpu: str = "", out: str = "/tmp/sweep_results.json"):
     """Run labelled method variants in parallel on the default config (wmdp_bio,
     domain retain). `specs` is semicolon-separated `label|override override ...`,
     e.g. "npo_b.05|trainer=npo trainer.forget.beta=0.05;wga_g2|trainer=wga
-    trainer.forget.gamma=2.0". Lets each method tune its own hyperparameters."""
+    trainer.forget.gamma=2.0". Lets each method tune its own hyperparameters.
+    `gpu=b200` routes to the B200 worker (full-model baselines need the 192GB)."""
     items = [s.split("|", 1) for s in specs.split(";") if s.strip()]
     jobs = [(ov.split(),) for _, ov in items]
-    results = list(train_remote.starmap(jobs))
+    results = list(_fn_for(gpu).starmap(jobs))
 
+    # Persist locally: a large sweep's stdout table is easily lost to modal log
+    # truncation, so dump every labelled result for offline assembly.
+    import json
+
+    rows = [{"label": lbl, "scores": (r or {}).get("scores", {})} for (lbl, _), r in zip(items, results)]
+    with open(out, "w") as f:
+        json.dump(rows, f, indent=1)
+    print(f"[sweep] wrote {len(rows)} rows -> {out}")
     print(f"\n{'variant':16s}" + _wmdp_titles())
     for (label, _), r in zip(items, results):
         print(f"{label:16s}" + _wmdp_cells(r))
@@ -400,3 +409,23 @@ def gen_probe(model_id: str, model: str = "dream"):
         print(f"\n[{r['split']:18s}] Q: {r['q']}")
         print(f"  GT  : {r['gt'][:220]}")
         print(f"  PRED: {r['pred'][:220]}")
+
+
+@app.function(gpu="H100:1", **_fn)
+def _count_trainable(layers):
+    import torch
+    from src.model import load_model
+    from src.component.adapter.layer_restricted import LayerRestricted
+
+    model, _ = load_model("Dream-org/Dream-v0-Instruct-7B")
+    total = sum(p.numel() for p in model.parameters())
+    LayerRestricted(layers=layers).setup(model)
+    train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return train, total
+
+
+@app.local_entrypoint()
+def count_trainable(layers: str = "10,11,12"):
+    ls = [int(x) for x in layers.split(",")]
+    tr, tot = _count_trainable.remote(ls)
+    print(f"[params] layers={ls}  trainable={tr/1e9:.3f}B / total={tot/1e9:.3f}B  = {100*tr/tot:.1f}%")
