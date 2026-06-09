@@ -82,6 +82,72 @@ train_remote = app.function(gpu="H100:1", **_fn)(_train_h100)
 train_remote_b200 = app.function(gpu="B200:1", **_fn)(_train_b200)
 
 
+def _gen_probe(overrides: list):
+    """Dump raw generations on a handful of TOFU forget + real_authors questions
+    to inspect the failure mode (garbage / wrong content / scoring mismatch)."""
+    import json
+    import os
+
+    import torch
+    from hydra import compose, initialize_config_dir
+    from hydra.utils import instantiate
+    from huggingface_hub import hf_hub_download
+    from transformers import AutoModel, AutoTokenizer
+
+    volume.reload()
+    with initialize_config_dir(version_base=None, config_dir="/root/configs"):
+        cfg = compose(config_name="unlearn", overrides=overrides)
+    ckpt = cfg.model.model_id
+    # SFT save strips the custom tokenizer code, so read the tokenizer from the
+    # base repo named in the checkpoint's auto_map; weights load from the ckpt.
+    amap = json.load(open(os.path.join(ckpt, "config.json"))).get("auto_map", {})
+    base = next((v.split("--")[0] for v in amap.values() if "--" in v), ckpt)
+    tok = AutoTokenizer.from_pretrained(base, trust_remote_code=True)
+    model = (
+        AutoModel.from_pretrained(ckpt, trust_remote_code=True, torch_dtype=torch.bfloat16)
+        .to("cuda:0")
+        .eval()
+    )
+    gen = instantiate(cfg.model.generator)
+    out = []
+    for split in ("forget10.json", "real_authors.json"):
+        path = hf_hub_download("locuslab/TOFU", split, repo_type="dataset")
+        rows = [json.loads(x) for x in open(path) if x.strip()][:4]
+        for r in rows:
+            pred = gen.generate(
+                model, tok, r["question"], cfg.model.mask_id, "cuda:0", max_new=128
+            )
+            out.append({"split": split, "q": r["question"], "gt": r["answer"], "pred": pred})
+    return out
+
+
+probe_remote = app.function(gpu="B200:1", **_fn)(_gen_probe)
+
+
+@app.function(
+    timeout=60 * 60,
+    volumes={"/root/.cache/huggingface": volume},
+    secrets=[modal.Secret.from_name("huggingface")],
+)
+def push_hf(local_dir: str, repo_name: str, private: bool = False):
+    """Upload a saved checkpoint folder to the token owner's HF account."""
+    import os
+
+    from huggingface_hub import HfApi
+
+    volume.reload()
+    token = (
+        os.environ.get("HF_TOKEN")
+        or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        or os.environ.get("HUGGINGFACE_TOKEN")
+    )
+    api = HfApi(token=token)  # token from the mounted huggingface secret
+    repo_id = f"{api.whoami()['name']}/{repo_name}"
+    api.create_repo(repo_id, exist_ok=True, private=private)
+    api.upload_folder(folder_path=local_dir, repo_id=repo_id)
+    return repo_id
+
+
 def _fn_for(gpu: str):
     """Pick the GPU-tier function ("b200" -> Blackwell, else the H100 default)."""
     return train_remote_b200 if gpu.lower().startswith("b200") else train_remote
@@ -173,13 +239,17 @@ def finetune_loop(
     n_mc: int = 32,
     model_id: str = "",
     start_ep: int = 0,
+    model: str = "",
+    gpu: str = "",
+    extra: str = "",
 ):
     """Checkpointed SFT toward the MDU Base-SFT target. Each round resumes from
     the previous checkpoint, trains `epochs_per_round` epochs, saves a checkpoint
     on the volume, and evals. Resume a stopped run by passing the last checkpoint
-    as --model-id and its epoch count as --start-ep. Stop when the metrics reach
-    the paper targets."""
-    prev, rows = model_id, []
+    as --model-id and its epoch count as --start-ep. `extra` injects per-backbone
+    overrides (e.g. "model=dream trainer.args.lr=1e-5"). Stop when the metrics
+    reach the paper targets."""
+    fn, prev, rows = _fn_for(gpu), model_id, []
     for r in range(rounds):
         total_ep = start_ep + (r + 1) * epochs_per_round
         ckpt = f"{output_root}/ckpt_{total_ep}ep"
@@ -190,12 +260,16 @@ def finetune_loop(
             f"eval.tofu.metrics.tofu.max_eval={eval_max}",
             f"eval.tofu.metrics.tofu.n_mc={n_mc}",
         ]
+        if model:
+            ov.append(f"model={model}")
+        if extra:
+            ov += extra.split()
         if prev:
             ov.append(f"model.model_id={prev}")
         print(
             f"\n===== round {r + 1}/{rounds}: resume {prev or 'base'} -> {ckpt} ====="
         )
-        rows.append((total_ep, (train_remote.remote(ov) or {}).get("scores", {})))
+        rows.append((total_ep, (fn.remote(ov) or {}).get("scores", {})))
         prev = ckpt
 
     print("\ntarget  fgt 0.884/0.380  ret 0.870/0.330  RA 0.611/0.041  WF 0.835/0.143")
@@ -306,3 +380,23 @@ def tofu_variant_sweep(specs: str, model_id: str = "", gpu: str = ""):
     print(f"\n{'variant':16s}" + _tofu_titles())
     for (label, _), r in zip(items, results):
         print(f"{label:16s}" + _tofu_cells(r))
+
+
+@app.local_entrypoint()
+def upload_hf(local_dir: str, repo_name: str, private: bool = False):
+    """Push a checkpoint on the volume to HF, e.g.
+    modal run src/run.py::upload_hf \
+      --local-dir /root/.cache/huggingface/open-dlu/tofu_sft/ckpt_150ep \
+      --repo-name llada-8b-tofu-sft"""
+    print(f"[uploaded] https://huggingface.co/{push_hf.remote(local_dir, repo_name, private)}")
+
+
+@app.local_entrypoint()
+def gen_probe(model_id: str, model: str = "dream"):
+    """Print raw generations for a few TOFU forget + real_authors questions, to
+    see how a (possibly broken) SFT checkpoint actually answers."""
+    ov = [f"model={model}", f"model.model_id={model_id}", "+model.generator.steps=256"]
+    for r in probe_remote.remote(ov) or []:
+        print(f"\n[{r['split']:18s}] Q: {r['q']}")
+        print(f"  GT  : {r['gt'][:220]}")
+        print(f"  PRED: {r['pred'][:220]}")

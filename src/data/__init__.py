@@ -129,8 +129,11 @@ class TofuCorpus:
         with open(path) as f:
             qa = [json.loads(line) for line in f if line.strip()]
         items = []
+        eos = tokenizer.eos_token_id
         for x in qa[:n_chunks]:
             prompt, ans = encode_qa(tokenizer, x["question"], x["answer"])
+            if eos is not None:
+                ans = ans + [eos]  # train termination so generation stops cleanly
             ids = (prompt + ans)[:seq_len]
             loss_mask = ([0] * len(prompt) + [1] * len(ans))[:seq_len]
             if any(loss_mask):
